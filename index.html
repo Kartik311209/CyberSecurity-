@@ -139,12 +139,14 @@
     </nav>
 
     <div class="sidebar-footer">
-      <div class="user-avatar">K</div>
+      <div class="user-avatar" id="sidebar-avatar">U</div>
       <div class="user-info">
-        <span class="user-name">Kartik</span>
-        <span class="user-role">SOC Analyst</span>
+        <span class="user-name" id="sidebar-username">SOC User</span>
+        <span class="user-role" id="sidebar-role">SOC Analyst</span>
       </div>
-      <div class="user-online-dot"></div>
+      <a href="/api/logout" title="Logout" style="margin-left:auto;color:#94a3b8;display:flex;padding:4px;border-radius:6px;transition:color .2s,background .2s;text-decoration:none" onmouseover="this.style.color='#ef4444';this.style.background='rgba(239,68,68,.1)'" onmouseout="this.style.color='#94a3b8';this.style.background='transparent'">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </a>
     </div>
   </aside>
 
@@ -568,5 +570,17 @@
 </div>
 
 <script src="app.js"></script>
+<script>
+  // Populate sidebar user info from active session
+  fetch('/api/session').then(r => r.json()).then(data => {
+    if (data.logged_in) {
+      const name = data.name || data.username || 'User';
+      const role = data.role || 'SOC Analyst';
+      document.getElementById('sidebar-username').textContent = name;
+      document.getElementById('sidebar-role').textContent = role;
+      document.getElementById('sidebar-avatar').textContent = name.charAt(0).toUpperCase();
+    }
+  }).catch(() => {}); // silently ignore if server not running
+</script>
 </body>
 </html>

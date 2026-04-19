@@ -11,7 +11,7 @@ URL:  http://127.0.0.1:5000
 """
 from __future__ import annotations
 import os, json, uuid, time, random, datetime, threading, collections, io
-from flask import Flask, Response, jsonify, request, send_from_directory
+from flask import Flask, Response, jsonify, request, send_from_directory, session, redirect, url_for
 from flask_cors import CORS
 import analyzer as az
 
@@ -23,6 +23,14 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 app = Flask(__name__, static_folder=BASE_DIR, static_url_path='')
 CORS(app)
 app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024  # 200 MB
+app.secret_key = 'cfip-secret-key-change-in-production-2025'
+
+# ─── Demo user store (replace with DB in production) ──────────
+_USERS = {
+    'admin':   {'password': 'admin123',  'name': 'Admin',   'role': 'SOC Admin'},
+    'kartik':  {'password': 'cfip2025',  'name': 'Kartik',  'role': 'SOC Analyst'},
+    'analyst': {'password': 'cfip2025',  'name': 'Analyst', 'role': 'SOC Analyst'},
+}
 
 ALLOWED_EXTENSIONS = {'.log', '.txt', '.csv', '.json', '.evtx', '.pcap'}
 
@@ -186,7 +194,76 @@ def _inject_real_events_to_stream(events: list):
 
 @app.route('/')
 def index():
+    """Redirect root to login; go to dashboard if already logged in."""
+    if session.get('logged_in'):
+        return send_from_directory(BASE_DIR, 'index.html')
+    return redirect('/login.html')
+
+@app.route('/dashboard')
+def dashboard():
+    if not session.get('logged_in'):
+        return redirect('/login.html')
     return send_from_directory(BASE_DIR, 'index.html')
+
+# ── Auth endpoints ──────────────────────────────────────────────
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    body     = request.get_json(silent=True) or {}
+    username = (body.get('username') or '').strip().lower()
+    password = body.get('password', '')
+
+    user = _USERS.get(username)
+    if user and user['password'] == password:
+        session['logged_in'] = True
+        session['username']  = username
+        session['name']      = user['name']
+        session['role']      = user['role']
+        return jsonify({
+            'success': True,
+            'name':    user['name'],
+            'role':    user['role'],
+        })
+    return jsonify({'success': False, 'error': 'Invalid username or password.'}), 401
+
+@app.route('/api/signup', methods=['POST'])
+def api_signup():
+    body     = request.get_json(silent=True) or {}
+    name     = (body.get('name') or '').strip()
+    username = (body.get('username') or '').strip().lower()
+    email    = (body.get('email') or '').strip()
+    password = body.get('password', '')
+
+    if not all([name, username, email, password]):
+        return jsonify({'success': False, 'error': 'All fields are required.'}), 400
+    if not __import__('re').match(r'^[a-zA-Z0-9_]{3,}$', username):
+        return jsonify({'success': False, 'error': 'Username must be 3+ chars: letters, numbers, underscores.'}), 400
+    if len(password) < 6:
+        return jsonify({'success': False, 'error': 'Password must be at least 6 characters.'}), 400
+    if username in _USERS:
+        return jsonify({'success': False, 'error': 'Username already taken.'}), 409
+
+    # Register new user
+    _USERS[username] = {'password': password, 'name': name, 'role': 'SOC Analyst', 'email': email}
+
+    # Auto-login
+    session['logged_in'] = True
+    session['username']  = username
+    session['name']      = name
+    session['role']      = 'SOC Analyst'
+
+    return jsonify({'success': True, 'name': name, 'role': 'SOC Analyst'})
+
+@app.route('/api/logout', methods=['POST', 'GET'])
+def api_logout():
+    session.clear()
+    return redirect('/login.html')
+
+@app.route('/api/session')
+def api_session():
+    """Check current session state."""
+    if session.get('logged_in'):
+        return jsonify({'logged_in': True, 'username': session.get('username'), 'name': session.get('name'), 'role': session.get('role')})
+    return jsonify({'logged_in': False}), 401
 
 @app.route('/<path:filename>')
 def static_files(filename):
